@@ -229,7 +229,15 @@ class ImportTab(ttk.Frame):
         return self.data_processor
     
     def switch_to_review(self):
-        """Switch to the review tab"""
+        """Switch to the review tab and update its content"""
         notebook = self.master
         review_tab_index = 1  # Index of review tab
+        review_tab = notebook.winfo_children()[review_tab_index]
+        
+        # Log data state before passing to review tab
+        logger.info(f"Switching to review tab with data shape: {self.imported_data.shape}")
+        logger.info(f"Number of detected PHI fields: {len(self.detected_fields)}")
+        logger.info(f"First few rows of data:\n{self.imported_data.head()}")
+        
+        review_tab.update_content(self.imported_data)
         notebook.select(review_tab_index)

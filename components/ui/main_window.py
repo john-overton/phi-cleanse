@@ -13,12 +13,17 @@ class MainWindow:
     def __init__(self, parent):
         self.parent = parent
         
-        # Add help component
-        self.help_component = HelpComponent(parent)
-        self.help_component.pack(anchor="ne", padx=5, pady=5)
+        # Create top frame for help component
+        top_frame = ttk.Frame(parent)
+        top_frame.pack(fill="x", padx=5)
+        
+        # Add help component to top right
+        self.help_component = HelpComponent(top_frame)
+        self.help_component.pack(side="right")
         
         # Create main tab control
         self.tab_control = ttk.Notebook(parent)
+        self.tab_control.pack(fill="both", expand=True, padx=5)
         
         # Create tabs
         self.import_tab = ImportTab(self.tab_control)
@@ -30,8 +35,6 @@ class MainWindow:
         self.tab_control.add(self.review_tab, text='Review & Configure')
         self.tab_control.add(self.preview_tab, text='Preview & Export')
         
-        self.tab_control.pack(expand=1, fill="both")
-        
         # Bind tab change event
         self.tab_control.bind('<<NotebookTabChanged>>', self.on_tab_change)
     
@@ -41,8 +44,6 @@ class MainWindow:
         tab_name = self.tab_control.tab(current_tab, "text")
         logger.info(f"Switched to tab: {tab_name}")
         
-        # Update tab content based on current state
-        if tab_name == 'Review & Configure' and hasattr(self.import_tab, 'imported_data'):
-            self.review_tab.update_content(self.import_tab.imported_data)
-        elif tab_name == 'Preview & Export' and hasattr(self.review_tab, 'configured_data'):
+        # Update preview tab content when switching to it
+        if tab_name == 'Preview & Export' and hasattr(self.review_tab, 'configured_data'):
             self.preview_tab.update_content(self.review_tab.configured_data)

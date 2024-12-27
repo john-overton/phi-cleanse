@@ -36,12 +36,20 @@ class PHICleanseApp:
         except Exception as e:
             logger.error(f"Error loading application icon: {str(e)}")
         
+        # Create main frame to hold everything
+        main_frame = ttk.Frame(root)
+        main_frame.pack(fill="both", expand=True)
+        
+        # Create top frame for help button
+        top_frame = ttk.Frame(main_frame)
+        top_frame.pack(fill="x")
+        
         # Create main window with tabs
-        self.main_window = MainWindow(root)
+        self.main_window = MainWindow(main_frame)
         
         # Create bottom frame for version and close button
-        bottom_frame = ttk.Frame(root)
-        bottom_frame.pack(fill="x", pady=10)
+        bottom_frame = ttk.Frame(main_frame)
+        bottom_frame.pack(fill="x", pady=(0, 5))
         
         # Add close button to bottom right
         self.close_button = ttk.Button(bottom_frame, text="Close", command=root.destroy)

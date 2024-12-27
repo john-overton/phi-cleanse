@@ -65,10 +65,33 @@ class DataProcessor:
         Set common records mapping
         
         Args:
-            records: Dictionary of field names and their common record settings
+            records: Dictionary of group IDs mapping to lists of related field names
+                    Example: {
+                        "group_1": ["first_name", "last_name", "dob"],
+                        "group_2": ["address", "phone"]
+                    }
         """
         self.common_records = records
-        logger.info("Updated common records configuration")
+        logger.info(f"Updated common records configuration with {len(records)} groups")
+        
+        # Initialize mappings for each group
+        for group_id, fields in records.items():
+            # Create a shared mapping file for the group
+            mapping_file = os.path.join('configs', 'mappings', f"{group_id}.json")
+            
+            # Load existing mapping if available
+            shared_mapping = {}
+            if os.path.exists(mapping_file):
+                try:
+                    with open(mapping_file, 'r') as f:
+                        shared_mapping = json.load(f)
+                except Exception as e:
+                    logger.error(f"Error loading mapping for {group_id}: {str(e)}")
+            
+            # Ensure each field in the group uses the shared mapping
+            for field in fields:
+                if field in self.sanitizers:
+                    self.sanitizers[field].set_shared_mapping(shared_mapping, mapping_file)
     
     def sanitize_data(self) -> pd.DataFrame:
         """
@@ -83,7 +106,55 @@ class DataProcessor:
         
         sanitized_data = self.imported_data.copy()
         
+        # Track which fields have been processed to avoid double-processing
+        processed_fields = set()
+        
+        # First process fields in common record groups
+        for group_id, fields in self.common_records.items():
+            # Create shared mapping file for the group
+            mapping_file = os.path.join('configs', 'mappings', f"{group_id}.json")
+            shared_mapping = {}
+            
+            # Load existing shared mapping if available
+            if os.path.exists(mapping_file):
+                try:
+                    with open(mapping_file, 'r') as f:
+                        shared_mapping = json.load(f)
+                except Exception as e:
+                    logger.error(f"Error loading mapping for {group_id}: {str(e)}")
+            
+            # Process each field in the group
+            for field_name in fields:
+                if field_name not in sanitized_data.columns:
+                    logger.warning(f"Field not found in data: {field_name}")
+                    continue
+                
+                config = self.field_configs.get(field_name, {})
+                sanitizer = self.sanitizers.get(field_name)
+                if not sanitizer:
+                    continue
+                
+                try:
+                    # Set shared mapping for the field
+                    sanitizer.set_shared_mapping(shared_mapping, mapping_file)
+                    
+                    # Sanitize the field
+                    sanitized_data[field_name] = sanitizer.sanitize_series(
+                        sanitized_data[field_name],
+                        preserve_format=config.get('preserve_format', True)
+                    )
+                    
+                    processed_fields.add(field_name)
+                    logger.info(f"Sanitized field in group {group_id}: {field_name}")
+                    
+                except Exception as e:
+                    logger.error(f"Error sanitizing field {field_name}: {str(e)}")
+        
+        # Process remaining fields that aren't part of any group
         for field_name, config in self.field_configs.items():
+            if field_name in processed_fields:
+                continue
+                
             if field_name not in sanitized_data.columns:
                 logger.warning(f"Field not found in data: {field_name}")
                 continue
@@ -93,8 +164,8 @@ class DataProcessor:
                 continue
             
             try:
-                # Load any existing mapping for consistent records
-                if config.get('consistent_mapping') and field_name in self.common_records:
+                # Use individual mapping for non-grouped fields
+                if config.get('consistent_mapping'):
                     mapping_file = os.path.join('configs', 'mappings', f"{field_name}.json")
                     if os.path.exists(mapping_file):
                         sanitizer.load_mapping(mapping_file)
@@ -105,8 +176,8 @@ class DataProcessor:
                     preserve_format=config.get('preserve_format', True)
                 )
                 
-                # Save mapping if using consistent mapping
-                if config.get('consistent_mapping') and field_name in self.common_records:
+                # Save individual mapping
+                if config.get('consistent_mapping'):
                     os.makedirs(os.path.join('configs', 'mappings'), exist_ok=True)
                     sanitizer.save_mapping(mapping_file)
                 

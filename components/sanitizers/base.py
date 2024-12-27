@@ -11,6 +11,8 @@ class BaseSanitizer(ABC):
     def __init__(self):
         self.mapping = {}
         self.reverse_mapping = {}
+        self.shared_mapping = None
+        self.shared_mapping_file = None
     
     @abstractmethod
     def sanitize(self, value, preserve_format=True):
@@ -41,12 +43,33 @@ class BaseSanitizer(ABC):
     
     def get_mapping(self):
         """Get the current value mapping"""
-        return self.mapping
+        return self.shared_mapping if self.shared_mapping is not None else self.mapping
     
     def set_mapping(self, mapping):
         """Set a predefined value mapping"""
-        self.mapping = mapping
-        self.reverse_mapping = {v: k for k, v in mapping.items()}
+        if self.shared_mapping is not None:
+            self.shared_mapping.update(mapping)
+            self._save_shared_mapping()
+        else:
+            self.mapping = mapping
+            self.reverse_mapping = {v: k for k, v in mapping.items()}
+    
+    def set_shared_mapping(self, mapping, mapping_file):
+        """Set a shared mapping for related fields"""
+        self.shared_mapping = mapping
+        self.shared_mapping_file = mapping_file
+        logger.info(f"Using shared mapping from {mapping_file}")
+    
+    def _save_shared_mapping(self):
+        """Save the shared mapping to file"""
+        if self.shared_mapping is not None and self.shared_mapping_file:
+            try:
+                os.makedirs(os.path.dirname(self.shared_mapping_file), exist_ok=True)
+                with open(self.shared_mapping_file, 'w') as f:
+                    json.dump(self.shared_mapping, f, indent=2)
+                logger.info(f"Saved shared mapping to {self.shared_mapping_file}")
+            except Exception as e:
+                logger.error(f"Error saving shared mapping: {str(e)}")
     
     def save_mapping(self, filename):
         """Save the current mapping to a file"""
@@ -74,19 +97,27 @@ class BaseSanitizer(ABC):
     
     def _get_consistent_value(self, original_value):
         """Get a consistent sanitized value for a given input"""
-        if original_value in self.mapping:
-            return self.mapping[original_value]
+        mapping = self.shared_mapping if self.shared_mapping is not None else self.mapping
+        reverse_mapping = {v: k for k, v in mapping.items()}
+        
+        if original_value in mapping:
+            return mapping[original_value]
         
         # Generate new value
         new_value = self._generate_value(original_value)
         
         # Ensure uniqueness
-        while new_value in self.reverse_mapping:
+        while new_value in reverse_mapping:
             new_value = self._generate_value(original_value)
         
         # Store mapping
-        self.mapping[original_value] = new_value
-        self.reverse_mapping[new_value] = original_value
+        mapping[original_value] = new_value
+        
+        # Save shared mapping if using one
+        if self.shared_mapping is not None:
+            self._save_shared_mapping()
+        else:
+            self.reverse_mapping[new_value] = original_value
         
         return new_value
     
