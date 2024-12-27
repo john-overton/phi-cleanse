@@ -38,7 +38,7 @@ class FieldConfigDialog(tk.Toplevel):
         
         # Add field type options from protected_fields.csv
         for field_type in ["full_name", "first_name", "last_name", "date_of_birth", 
-                          "ssn", "address", "phone_number", "email"]:
+                          "ssn", "medicaid_number", "address", "phone_number", "email"]:
             ttk.Radiobutton(type_frame, text=field_type.replace("_", " ").title(),
                           value=field_type, variable=self.type_var).pack(anchor="w")
         
@@ -86,13 +86,49 @@ class ReviewTab(ttk.Frame):
         
     def setup_ui(self):
         """Setup the UI components"""
+        # Configure custom styles
+        style = ttk.Style()
+        style.configure('PHI.TCheckbutton',
+                       background='#fff3e0',  # Light orange background
+                       font=('TkDefaultFont', 9, 'bold'))  # Bold font for PHI fields
+        
         # Top frame for common settings
         self.settings_frame = ttk.LabelFrame(self, text="Common Record Settings", padding=10)
         self.settings_frame.pack(fill="x", padx=10, pady=5)
         
         ttk.Label(self.settings_frame, 
-                 text="Configure settings for maintaining consistency across records"
-        ).pack(anchor="w")
+                 text="Select fields that should maintain consistent values across records:"
+        ).pack(anchor="w", pady=(0, 5))
+        
+        # Create scrollable frame for common record checkboxes
+        checkbox_container = ttk.Frame(self.settings_frame)
+        checkbox_container.pack(fill="x", padx=5)
+        
+        # Create canvas and scrollbar
+        self.checkbox_canvas = tk.Canvas(checkbox_container, height=100)
+        scrollbar = ttk.Scrollbar(checkbox_container, orient="vertical", command=self.checkbox_canvas.yview)
+        
+        # Create frame for checkboxes inside canvas
+        self.checkbox_frame = ttk.Frame(self.checkbox_canvas)
+        self.checkbox_frame.bind(
+            "<Configure>",
+            lambda e: self.checkbox_canvas.configure(scrollregion=self.checkbox_canvas.bbox("all"))
+        )
+        
+        # Add checkbox frame to canvas
+        self.checkbox_canvas.create_window((0, 0), window=self.checkbox_frame, anchor="nw")
+        self.checkbox_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        self.checkbox_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Bind mouse wheel events for scrolling
+        self.checkbox_canvas.bind("<Enter>", self._bind_mouse_scroll)
+        self.checkbox_canvas.bind("<Leave>", self._unbind_mouse_scroll)
+        
+        # Dictionary to store checkbox variables
+        self.common_record_vars = {}
         
         # Main frame for data grid
         self.main_frame = ttk.Frame(self)
@@ -138,8 +174,23 @@ class ReviewTab(ttk.Frame):
         y_scroll.config(command=self.table.yview)
         x_scroll.config(command=self.table.xview)
         
-        # Bind double-click event
+        # Configure column resizing
+        self.table.bind('<B1-Motion>', self.on_column_resize)
+        
+        # Configure tags for highlighting
+        style = ttk.Style()
+        style.map('Highlight.Treeview',
+                 background=[('selected', '#e3f2fd')],  # Light blue when selected
+                 foreground=[('selected', 'black')])    # Keep text black when selected
+        
+        self.table.configure(style='Highlight.Treeview')
+        
+        # Configure column highlighting
+        self.phi_columns = set()  # Track PHI columns
+        
+        # Bind events
         self.table.bind("<Double-1>", self.on_field_click)
+        self.table.bind("<Shift-MouseWheel>", self.on_horizontal_scroll)
     
     def update_content(self, data):
         """Update table content with imported data"""
@@ -169,16 +220,112 @@ class ReviewTab(ttk.Frame):
             
             self.table.heading(col, text=heading_text)
             
-            # Set column width based on content
-            max_width = max(
-                len(str(heading_text)),
-                data[col].astype(str).str.len().max()
-            ) * 10
-            self.table.column(col, width=min(max_width, 300))
+            # Set intelligent column width
+            sample_width = min(
+                max(
+                    len(str(heading_text)) * 10,
+                    data[col].astype(str).str.len().max() * 10,
+                    300  # Maximum width
+                ),
+                100  # Minimum width
+            )
+            self.table.column(col, width=sample_width, minwidth=100, stretch=False)
+            
+            # Create frame for checkbox and label
+            field_frame = ttk.Frame(self.checkbox_frame)
+            field_frame.pack(fill="x", anchor="w", pady=1)
+            
+            # Add checkbox for common record selection
+            var = tk.BooleanVar(value=False)
+            self.common_record_vars[col] = var
+            
+            # Create checkbox with appropriate style and label
+            if col in self.detected_fields:
+                detection = self.detected_fields[col]
+                checkbox_text = f"{col} (PHI: {detection['field_type']})"
+                checkbox = ttk.Checkbutton(
+                    field_frame,
+                    text=checkbox_text,
+                    variable=var,
+                    command=lambda c=col: self.on_common_record_toggle(c),
+                    style='PHI.TCheckbutton'
+                )
+            else:
+                checkbox = ttk.Checkbutton(
+                    field_frame,
+                    text=col,
+                    variable=var,
+                    command=lambda c=col: self.on_common_record_toggle(c)
+                )
+            checkbox.pack(side="left", padx=(0, 5))
+            
+            # Track PHI columns and style their headings
+            if col in self.detected_fields:
+                self.phi_columns.add(col)
+                # Style the heading to indicate PHI field
+                self.table.heading(col, text=heading_text)
+                # Configure column style
+                self.table.tag_configure(f'phi_{col}', background='#fff3e0')
         
         # Insert data
         for idx, row in data.iterrows():
-            self.table.insert("", "end", values=list(row))
+            values = list(row)
+            item_id = self.table.insert("", "end", values=values)
+            
+            # Apply highlighting to entire columns that contain PHI
+            for col in self.phi_columns:
+                col_idx = data.columns.get_loc(col)
+                self.table.set(item_id, col, values[col_idx])
+                self.table.tag_add(f'phi_{col}', item_id)
+    
+    def _bind_mouse_scroll(self, event):
+        """Bind mouse wheel to canvas scrolling when mouse enters canvas"""
+        self.checkbox_canvas.bind_all("<MouseWheel>", self._on_mouse_scroll)
+    
+    def _unbind_mouse_scroll(self, event):
+        """Unbind mouse wheel when mouse leaves canvas"""
+        self.checkbox_canvas.unbind_all("<MouseWheel>")
+    
+    def _on_mouse_scroll(self, event):
+        """Handle mouse wheel scrolling for checkbox list"""
+        self.checkbox_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        return "break"
+    
+    def on_horizontal_scroll(self, event):
+        """Handle horizontal scrolling with Shift+MouseWheel"""
+        self.table.xview_scroll(int(-1 * (event.delta / 120)), "units")
+        # Prevent event propagation
+        return "break"
+    
+    def on_column_resize(self, event):
+        """Handle column resize event"""
+        region = self.table.identify_region(event.x, event.y)
+        if region == "separator":
+            # Get the column being resized
+            column = self.table.identify_column(event.x)
+            
+            # Get current column width
+            current_width = self.table.column(column, "width")
+            
+            # Calculate new width based on mouse position
+            tree_x = event.x - self.table.winfo_rootx()
+            new_width = max(100, tree_x - self.table.column(column, "x"))
+            
+            # Apply new width
+            self.table.column(column, width=new_width)
+            
+            # Prevent event propagation
+            return "break"
+    
+    def on_common_record_toggle(self, column):
+        """Handle common record checkbox toggle"""
+        is_common = self.common_record_vars[column].get()
+        if is_common:
+            self.data_processor.set_common_records({column: True})
+            logger.info(f"Added {column} to common records")
+        else:
+            self.data_processor.set_common_records({column: False})
+            logger.info(f"Removed {column} from common records")
     
     def on_field_click(self, event):
         """Handle field configuration dialog"""

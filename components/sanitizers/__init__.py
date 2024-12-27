@@ -9,7 +9,8 @@ from .identifiers import (
     SSNSanitizer,
     MRNSanitizer,
     InsuranceIDSanitizer,
-    DriversLicenseSanitizer
+    DriversLicenseSanitizer,
+    MedicaidNumberSanitizer
 )
 from .contact import (
     AddressSanitizer,
@@ -35,7 +36,8 @@ SANITIZER_MAP = {
     'medical_record_number': MRNSanitizer,
     'insurance_id': InsuranceIDSanitizer,
     'drivers_license': DriversLicenseSanitizer,
-    'appointment_date': AppointmentDateSanitizer
+    'appointment_date': AppointmentDateSanitizer,
+    'medicaid_number': MedicaidNumberSanitizer
 }
 
 def get_sanitizer(field_type):

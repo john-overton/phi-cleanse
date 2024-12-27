@@ -115,6 +115,68 @@ class InsuranceIDSanitizer(BaseSanitizer):
         
         return self.fake.bothify(pattern)
 
+class MedicaidNumberSanitizer(BaseSanitizer):
+    """Sanitizer for Medicaid Numbers"""
+    
+    def __init__(self):
+        super().__init__()
+        self.fake = Faker()
+        # Common Medicaid number patterns:
+        # - AA12345A (alpha-numeric with letter suffix)
+        # - 1234567890 (pure numeric, length varies by state)
+        # - AB-12345678 (with separators)
+        self.patterns = [
+            re.compile(r'^[A-Z]{2}\d{5}[A-Z]$'),  # AA12345A
+            re.compile(r'^\d{7,12}$'),            # Pure numeric
+            re.compile(r'^[A-Z]{2}-\d{8}$')       # With separator
+        ]
+    
+    def sanitize(self, value, preserve_format=True):
+        if not value or not isinstance(value, str):
+            return value
+        
+        sanitized = self._get_consistent_value(value)
+        
+        if preserve_format:
+            # Preserve any separators
+            if '-' in value:
+                parts = sanitized.split('-')
+                if len(parts) == 2:
+                    sanitized = f"{parts[0]}-{parts[1]}"
+            
+            # Ensure same length as original
+            if len(value) != len(sanitized):
+                sanitized = sanitized[:len(value)]
+        
+        return sanitized
+    
+    def _generate_value(self, original_value):
+        """Generate a new Medicaid number matching the original format"""
+        # Clean the original value
+        clean_value = re.sub(r'[^A-Z0-9]', '', original_value.upper())
+        
+        # Check which pattern it matches
+        for pattern in self.patterns:
+            if pattern.match(clean_value):
+                if pattern == self.patterns[0]:  # AA12345A
+                    return (
+                        self.fake.lexify('??') +
+                        self.fake.numerify('#####') +
+                        self.fake.lexify('?')
+                    )
+                elif pattern == self.patterns[1]:  # Pure numeric
+                    return self.fake.numerify('#' * len(clean_value))
+                elif pattern == self.patterns[2]:  # With separator
+                    return (
+                        self.fake.lexify('??') +
+                        '-' +
+                        self.fake.numerify('########')
+                    )
+        
+        # Default to same length random alphanumeric
+        return self.fake.bothify('?' * len(clean_value))
+
+
 class DriversLicenseSanitizer(BaseSanitizer):
     """Sanitizer for Drivers License Numbers"""
     
