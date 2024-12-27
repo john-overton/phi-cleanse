@@ -67,6 +67,9 @@ class DataGrid(ttk.Frame):
         
         # Bind events
         self.table.bind("<Shift-MouseWheel>", self.on_horizontal_scroll)
+        
+        # Configure PHI tag
+        self.table.tag_configure('phi', background='#fff3e0')  # Light orange for PHI cells
     
     def setup_context_menu(self):
         """Setup right-click context menu"""
@@ -105,22 +108,41 @@ class DataGrid(ttk.Frame):
             # Update configuration in data processor
             self.data_processor.configure_field(field_name, dialog.result)
             
-            # Update column heading and highlighting
+            # Update column heading
             heading_text = f"{field_name} (PHI: {dialog.result['field_type']})"
             self.table.heading(self.clicked_column, text=heading_text)
             
-            # Update PHI columns set and configure highlighting
+            # Update PHI columns set
             self.phi_columns.add(field_name)
             
-            # Configure tag for highlighting
-            self.table.tag_configure(f'phi_{field_name}', background='#fff3e0')  # Light orange background
-            
-            # Update all existing rows with the new tag
-            for item in self.table.get_children():
-                current_tags = list(self.table.item(item, 'tags'))
-                if f'phi_{field_name}' not in current_tags:
-                    current_tags.append(f'phi_{field_name}')
-                self.table.item(item, tags=current_tags)
+            # Refresh the data to update PHI highlighting
+            self.refresh_data()
+    
+    def refresh_data(self):
+        """Refresh the data display with current PHI settings"""
+        # Store current data
+        data = []
+        for item in self.table.get_children():
+            values = self.table.item(item)['values']
+            data.append(values)
+        
+        # Clear and reinsert with updated PHI highlighting
+        self.table.delete(*self.table.get_children())
+        for values in data:
+            self.insert_row(values)
+    
+    def insert_row(self, values):
+        """Insert a row with proper PHI highlighting"""
+        # Create list of tags for this row
+        tags = []
+        for col_idx, col in enumerate(self.table["columns"]):
+            if col in self.phi_columns:
+                tags.append(f'phi_{col_idx}')
+                self.table.tag_configure(f'phi_{col_idx}', background='#fff3e0')
+        
+        # Insert row with tags
+        item_id = self.table.insert("", "end", values=values, tags=tags)
+        return item_id
     
     def update_content(self, data, detected_fields=None):
         """Update table content with imported data"""
@@ -142,7 +164,7 @@ class DataGrid(ttk.Frame):
         self.table["show"] = "headings"
         
         # Configure each column
-        for col in data.columns:
+        for col_idx, col in enumerate(data.columns):
             # Set heading text
             heading_text = col
             
@@ -150,9 +172,6 @@ class DataGrid(ttk.Frame):
                 detection = self.detected_fields[col]
                 heading_text = f"{col} (PHI: {detection['field_type']})"
                 self.phi_columns.add(col)
-                
-                # Configure tag for highlighting this PHI column's cells
-                self.table.tag_configure(f'phi_{col}', background='#fff3e0')  # Light orange background
             
             self.table.heading(col, text=heading_text)
             
@@ -183,12 +202,9 @@ class DataGrid(ttk.Frame):
                             logger.warning(f"Error converting value to string: {val}, using repr() instead")
                             values.append(repr(val))
                 
-                # Collect tags for PHI columns
-                tags = [f'phi_{col}' for col in self.phi_columns]
-                
-                # Insert row with tags
-                item_id = self.table.insert("", "end", values=values, tags=tags)
-                logger.debug(f"Inserted row {idx} with ID: {item_id}")
+                # Insert row with PHI highlighting
+                self.insert_row(values)
+                logger.debug(f"Inserted row {idx}")
                 
             except Exception as e:
                 logger.error(f"Error inserting row {idx}: {str(e)}")
