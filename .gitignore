@@ -1,1 +1,53 @@
-_sample_app
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Application specific
+logs/*.log
+configs/*.json
+configs/mappings/*.json
+
+# Keep README files
+!logs/README.md
+!configs/README.md
+
+# Operating System
+.DS_Store
+Thumbs.db
+_sample_app/app.py
+_sample_app/build.py
+_sample_app/data_processor.py
+_sample_app/file_operations.py
+_sample_app/logger_config.py
+_sample_app/ui_components.py
